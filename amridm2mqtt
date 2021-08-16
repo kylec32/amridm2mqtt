@@ -40,8 +40,8 @@ if len(settings.MQTT_USER) and len(settings.MQTT_PASSWORD):
 DEBUG=os.environ.get('DEBUG', '').lower() in ['1', 'true', 't']
 
 def debug_print(*args, **kwargs):
-    if DEBUG:
-        print(*args, **kwargs)
+    # if DEBUG:
+    print(*args, **kwargs)
 
 def get_last_interval(meter_id):
     return last_reading.get(meter_id, (None))
@@ -57,37 +57,43 @@ def send_mqtt(topic, payload,):
         print("MQTT Publish Failed: " + str(ex))
 
 # start the rtl_tcp program
+print("before")
 rtltcp = subprocess.Popen([settings.RTL_TCP + " > /dev/null 2>&1 &"], shell=True,
     stdin=None, stdout=None, stderr=None, close_fds=True)
 time.sleep(5)
+print("after")
 
 # start the rtlamr program.
-rtlamr_cmd = [settings.RTLAMR, '-msgtype=idm', '-format=csv']
+rtlamr_cmd = [settings.RTLAMR, '-msgtype=scm+', '-format=csv']
 rtlamr = subprocess.Popen(rtlamr_cmd, stdout=subprocess.PIPE, universal_newlines=True)
 
+print("Before again")
 while True:
     try:
         amrline = rtlamr.stdout.readline().strip()
+#        print(amrline)
         flds = amrline.split(',')
 
-        if len(flds) != 66:
-            # proper IDM results have 66 fields
-            continue
+        # if len(flds) != 66:
+        #     # proper IDM results have 66 fields
+        #     continue
 
         # make sure the meter id is one we want
-        meter_id = int(flds[9])
+        meter_id = int(flds[6])
         if settings.WATCHED_METERS and meter_id not in settings.WATCHED_METERS:
             continue
 
         # get some required info: current meter reading, current interval id, most recent interval usage
-        read_cur = int(flds[15])
-        interval_cur = int(flds[10])
-        idm_read_cur = int(flds[16])
+        read_cur = int(flds[7])
+        # interval_cur = int(flds[10])
+        # idm_read_cur = int(flds[16])
+        print(read_cur)
+        print(flds)
 
         # retreive the interval id of the last time we sent to MQTT
-        interval_last = get_last_interval(meter_id)
+        # interval_last = get_last_interval(meter_id)
 
-        if interval_cur != interval_last:
+        if True:
 
             # as observed on on my meter...
             # using values set in settings...
@@ -95,18 +101,18 @@ while True:
             # measured in hundredths of a kilowatt hour
             # take the last interval usage times 10 to get watt-hours,
             # then times 12 to get average usage in watts
-            rate = idm_read_cur * settings.WH_MULTIPLIER * settings.READINGS_PER_HOUR
-
+            # rate = idm_read_cur * settings.WH_MULTIPLIER * settings.READINGS_PER_HOUR
+            print(read_cur)
             current_reading_in_kwh = (read_cur * settings.WH_MULTIPLIER) / 1000
 
             debug_print('Sending meter {} reading: {}'.format(meter_id, current_reading_in_kwh))
             send_mqtt('readings/{}/meter_reading'.format(meter_id), str(current_reading_in_kwh))
 
-            debug_print('Sending meter {} rate: {}'.format(meter_id, rate))
-            send_mqtt('readings/{}/meter_rate'.format(meter_id), str(rate))
+            # debug_print('Sending meter {} rate: {}'.format(meter_id, rate))
+            # send_mqtt('readings/{}/meter_rate'.format(meter_id), str(rate))
 
             # store interval ID to avoid duplicating data
-            set_last_interval(meter_id, interval_cur)
+            # set_last_interval(meter_id, interval_cur)
 
     except Exception as e:
         debug_print('Exception squashed! {}: {}', e.__class__.__name__, e)
